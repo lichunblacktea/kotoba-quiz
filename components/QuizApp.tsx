@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Mode = "gap" | "pron";
-type Tab = "settings" | "quiz" | "history";
+type Tab = "settings" | "quiz" | "history" | "study";
 type QuizStage = "empty" | "loading" | "active" | "summary";
 
 const COUNT_STOPS = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
@@ -192,6 +192,9 @@ export default function QuizApp() {
         <button className="tab" role="tab" aria-selected={activeTab === "history"} onClick={() => setActiveTab("history")}>
           <span className="jp">履歴</span>History
         </button>
+        <button className="tab" role="tab" aria-selected={activeTab === "study"} onClick={() => setActiveTab("study")}>
+          <span className="jp">単語帳</span>Study
+        </button>
       </div>
 
       <div className="card">
@@ -252,6 +255,8 @@ export default function QuizApp() {
         )}
 
         {activeTab === "history" && <HistoryView />}
+
+        {activeTab === "study" && <StudyView />}
       </div>
 
       <footer>{stats ? `${stats.total.toLocaleString()} words · N2 · 絕對合格單字N2清單` : ""}</footer>
@@ -565,34 +570,27 @@ function PronQuestionView({
   );
 }
 
-function SummaryView({
-  mode, score, total, results, onChangeSettings, onRestart,
-}: {
-  mode: Mode; score: number; total: number; results: ResultRow[];
-  onChangeSettings: () => void; onRestart: () => void;
-}) {
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+// Self-contained report button: owns its own open/note/sending/sent state, so any
+// row (score board, study list) can just drop it in without lifting state up.
+// Its panel is styled to span the full width of a grid parent (grid-column: 1 / -1),
+// so it renders correctly whether it's a cell in a CSS-grid row or a plain flex child.
+function ReportButton({ wordNo, word, sentence }: { wordNo: number; word: string; sentence: string }) {
+  const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
-  const [sentIdx, setSentIdx] = useState<number[]>([]);
+  const [sent, setSent] = useState(false);
 
-  function toggleReport(i: number) {
-    setOpenIdx(openIdx === i ? null : i);
-    setNote("");
-  }
-
-  async function sendFeedback(i: number) {
+  async function send() {
     if (!note.trim()) return;
-    const r = results[i];
     setSending(true);
     try {
       await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordNo: r.wordNo, word: r.word, sentence: r.sentence, note }),
+        body: JSON.stringify({ wordNo, word, sentence, note }),
       });
-      setSentIdx((prev) => [...prev, i]);
-      setOpenIdx(null);
+      setSent(true);
+      setOpen(false);
     } catch {
       // best-effort; user can just try again
     } finally {
@@ -600,6 +598,154 @@ function SummaryView({
     }
   }
 
+  return (
+    <>
+      <button
+        type="button"
+        className="report-btn"
+        title={sent ? "Feedback sent" : "Report an issue with this word"}
+        disabled={sent}
+        onClick={() => { setOpen((o) => !o); setNote(""); }}
+      >
+        {sent ? "✓" : "⚑"}
+      </button>
+      {open && (
+        <div className="report-panel">
+          <div className="report-word">{word}</div>
+          <div className="report-sentence">{sentence}</div>
+          <textarea
+            className="report-input"
+            rows={3}
+            placeholder="What's wrong with this word or sentence?"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className="btn-row">
+            <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button type="button" className="btn primary" disabled={sending || !note.trim()} onClick={send}>
+              {sending ? "Sending…" : "Submit"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function FavoriteButton({ wordId, initialFavorite }: { wordId: number; initialFavorite: boolean }) {
+  const [fav, setFav] = useState(initialFavorite);
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    if (busy) return;
+    const next = !fav;
+    setBusy(true);
+    setFav(next);
+    try {
+      await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, favorite: next }),
+      });
+    } catch {
+      setFav(!next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={`fav-btn ${fav ? "active" : ""}`}
+      title={fav ? "Remove from favorites" : "Add to favorites"}
+      onClick={toggle}
+    >
+      {fav ? "★" : "☆"}
+    </button>
+  );
+}
+
+type NoteMode = "closed" | "view" | "edit";
+
+function NoteButton({
+  wordId, initialNote, defaultOpen = false,
+}: { wordId: number; initialNote: string | null; defaultOpen?: boolean }) {
+  // Rows opened automatically (the "Has notes" filter) rest in read-only "view"
+  // once you're done editing; rows opened manually (the pencil, elsewhere) rest
+  // fully "closed" — matches how each got opened in the first place.
+  const restMode: NoteMode = defaultOpen ? "view" : "closed";
+  const [mode, setMode] = useState<NoteMode>(restMode);
+  const [text, setText] = useState(initialNote ?? "");
+  const [saved, setSaved] = useState(initialNote ?? "");
+  const [saving, setSaving] = useState(false);
+  const hasNote = saved.trim().length > 0;
+
+  function openEdit() {
+    setText(saved);
+    setMode("edit");
+  }
+
+  function closeEdit() {
+    setText(saved);
+    setMode(restMode);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, text }),
+      });
+      setSaved(text);
+      setMode(restMode);
+    } catch {
+      // best-effort; user can just try again
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`note-btn ${hasNote ? "active" : ""}`}
+        title={hasNote ? "Edit note" : "Add a note"}
+        onClick={() => (mode === "edit" ? closeEdit() : openEdit())}
+      >
+        ✎
+      </button>
+      {mode === "view" && hasNote && <div className="note-view">{saved}</div>}
+      {mode === "edit" && (
+        <div className="report-panel">
+          <textarea
+            className="report-input"
+            rows={3}
+            placeholder="Note something to review later — grammar point, nuance, etc."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="btn-row">
+            <button type="button" className="btn" onClick={closeEdit}>Cancel</button>
+            <button type="button" className="btn primary" disabled={saving} onClick={save}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function SummaryView({
+  mode, score, total, results, onChangeSettings, onRestart,
+}: {
+  mode: Mode; score: number; total: number; results: ResultRow[];
+  onChangeSettings: () => void; onRestart: () => void;
+}) {
   return (
     <>
       <div className="card-head"><span className="mode-name">{MODE_LABEL[mode]}</span></div>
@@ -612,48 +758,14 @@ function SummaryView({
       </div>
       <div className="board">
         {results.map((r, i) => (
-          <div key={i} className="board-item">
-            <div className={`board-row ${r.ok ? "ok" : "bad"}`}>
-              <span className="board-i">{i + 1}</span>
-              <span className="board-no">{r.wordNo}</span>
-              <span className="board-word">{r.word}</span>
-              <span className="board-your">{r.your || "—"}</span>
-              <span className="board-correct">{r.correct}</span>
-              <span className="board-mark">{r.ok ? "✓" : "✗"}</span>
-              <button
-                type="button"
-                className="report-btn"
-                title={sentIdx.includes(i) ? "Feedback sent" : "Report an issue with this word"}
-                disabled={sentIdx.includes(i)}
-                onClick={() => toggleReport(i)}
-              >
-                {sentIdx.includes(i) ? "✓" : "⚑"}
-              </button>
-            </div>
-            {openIdx === i && (
-              <div className="report-panel">
-                <div className="report-word">{r.word}</div>
-                <div className="report-sentence">{r.sentence}</div>
-                <textarea
-                  className="report-input"
-                  rows={3}
-                  placeholder="What's wrong with this word or sentence?"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-                <div className="btn-row">
-                  <button type="button" className="btn" onClick={() => setOpenIdx(null)}>Cancel</button>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={sending || !note.trim()}
-                    onClick={() => sendFeedback(i)}
-                  >
-                    {sending ? "Sending…" : "Submit"}
-                  </button>
-                </div>
-              </div>
-            )}
+          <div key={i} className={`board-row ${r.ok ? "ok" : "bad"}`}>
+            <span className="board-i">{i + 1}</span>
+            <span className="board-no">{r.wordNo}</span>
+            <span className="board-word">{r.word}</span>
+            <span className="board-your">{r.your || "—"}</span>
+            <span className="board-correct">{r.correct}</span>
+            <span className="board-mark">{r.ok ? "✓" : "✗"}</span>
+            <ReportButton wordNo={r.wordNo} word={r.word} sentence={r.sentence} />
           </div>
         ))}
       </div>
@@ -739,6 +851,117 @@ function HistoryView() {
               </div>
             </>
           )}
+        </>
+      )}
+    </>
+  );
+}
+
+interface StudyWord {
+  wordId: number;
+  wordNo: number;
+  word: string;
+  reading: string;
+  sentence: string;
+  isFavorite: boolean;
+  note: string | null;
+}
+interface StudyData {
+  total: number;
+  page: number;
+  pageSize: number;
+  words: StudyWord[];
+}
+
+function StudyView() {
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [hasNotesOnly, setHasNotesOnly] = useState(false);
+  const [page, setPage] = useState(0);
+  const [data, setData] = useState<StudyData | null>(null);
+
+  // debounce the search box so we don't fire a request per keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(queryInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [queryInput]);
+
+  useEffect(() => { setPage(0); }, [query, favoritesOnly, hasNotesOnly]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({ page: String(page) });
+    if (query) params.set("query", query);
+    if (favoritesOnly) params.set("favoritesOnly", "1");
+    if (hasNotesOnly) params.set("hasNotesOnly", "1");
+    fetch(`/api/words?${params}`).then((r) => r.json()).then(setData).catch(() => {});
+  }, [query, favoritesOnly, hasNotesOnly, page]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  return (
+    <>
+      <div className="study-controls">
+        <input
+          type="text"
+          className="report-input study-search"
+          placeholder="Search by word, reading, or word number"
+          value={queryInput}
+          onChange={(e) => setQueryInput(e.target.value)}
+        />
+        <label className="fav-toggle">
+          <input
+            type="checkbox"
+            checked={favoritesOnly}
+            onChange={(e) => setFavoritesOnly(e.target.checked)}
+          />
+          Favorites only
+        </label>
+        <label className="fav-toggle">
+          <input
+            type="checkbox"
+            checked={hasNotesOnly}
+            onChange={(e) => setHasNotesOnly(e.target.checked)}
+          />
+          Has notes
+        </label>
+      </div>
+
+      {!data ? (
+        <div className="loading">Loading words&hellip;</div>
+      ) : data.words.length === 0 ? (
+        <p className="sub empty-sub">No words match.</p>
+      ) : (
+        <>
+          <div className="study-list">
+            {data.words.map((w) => (
+              <div key={w.wordId} className="study-row">
+                <span className="board-i">{w.wordNo}</span>
+                <span className="acc-word">
+                  {w.word}
+                  <span className="acc-reading">{w.reading}</span>
+                </span>
+                <span className="study-sentence">{w.sentence}</span>
+                <FavoriteButton wordId={w.wordId} initialFavorite={w.isFavorite} />
+                <NoteButton
+                  key={`${w.wordId}-${hasNotesOnly}`}
+                  wordId={w.wordId}
+                  initialNote={w.note}
+                  defaultOpen={hasNotesOnly}
+                />
+                <ReportButton wordNo={w.wordNo} word={w.word} sentence={w.sentence} />
+              </div>
+            ))}
+          </div>
+          <div className="pagination">
+            <button type="button" className="btn" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+              Prev
+            </button>
+            <span className="pagination-label">Page {page + 1} of {totalPages} &middot; {data.total} words</span>
+            <button type="button" className="btn" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </button>
+          </div>
         </>
       )}
     </>

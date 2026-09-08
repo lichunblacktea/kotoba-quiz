@@ -102,7 +102,7 @@ h1{
 
 .tabs{
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 .tab{
@@ -467,7 +467,6 @@ h1{
 }
 .board-row.ok{ background: var(--ai-soft); }
 .board-row.bad{ background: var(--shu-soft); }
-.board-item{ display: flex; flex-direction: column; }
 .report-btn{
   background: transparent;
   border: none;
@@ -479,12 +478,18 @@ h1{
 .report-btn:hover{ color: var(--shu); }
 .report-btn:disabled{ color: var(--ai); cursor: default; }
 .report-panel{
+  /* When rendered inside a CSS-grid row (board-row, study-row), span the full
+     row width so it drops onto its own line below the row's normal cells.
+     Ignored (harmless) in non-grid contexts. */
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin: 4px 0 6px;
   padding: 10px;
-  background: var(--paper);
+  /* No background of its own — inherits whatever the row above it is showing
+     (zebra tint or not), so the panel reads as part of that row instead of a
+     separately-colored box dropped underneath it. */
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -571,6 +576,87 @@ h1{
   margin: auto;
   color: var(--ink-soft);
   font-size: 14px;
+}
+
+.study-controls{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.study-search{ flex: 1 1 220px; }
+.fav-toggle{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.study-list{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.study-row{
+  display: grid;
+  grid-template-columns: 2.4em 1fr 1.6fr auto auto auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 6px;
+  border-radius: 8px;
+}
+.study-row:nth-child(odd){ background: var(--paper); }
+.study-sentence{
+  font-family: "Shippori Mincho", serif;
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.fav-btn{
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-soft);
+  padding: 2px;
+}
+.fav-btn.active{ color: var(--shu); }
+.note-btn{
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-soft);
+  padding: 2px;
+}
+.note-btn.active{ color: var(--ai); }
+.note-view{
+  grid-column: 1 / -1;
+  margin: 4px 0 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: "Shippori Mincho", serif;
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.pagination{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pagination .btn{ flex: none; padding: 10px 16px; }
+.pagination-label{
+  flex: 1;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 footer{
