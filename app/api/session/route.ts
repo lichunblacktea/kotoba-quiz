@@ -14,6 +14,11 @@ interface PoolEntry extends WordEntry {
   pool: "due" | "new" | "later";
 }
 
+interface FavoriteDoc {
+  _id: number;
+  favoritedAt: string;
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -51,11 +56,15 @@ export async function GET(req: NextRequest) {
   const words = getWords().filter((w) => (mode === "gap" ? w.blankOk : w.hasKanji));
 
   const db = await getDb();
-  const progressDocs = await db
-    .collection<ProgressDoc>("progress")
-    .find({ mode }, { projection: { wordId: 1, timesSeen: 1, nextDueAt: 1 } })
-    .toArray();
+  const [progressDocs, favoriteDocs] = await Promise.all([
+    db
+      .collection<ProgressDoc>("progress")
+      .find({ mode }, { projection: { wordId: 1, timesSeen: 1, nextDueAt: 1 } })
+      .toArray(),
+    db.collection<FavoriteDoc>("favorites").find({}, { projection: { _id: 1 } }).toArray(),
+  ]);
   const progressByWordId = new Map(progressDocs.map((p) => [p.wordId, p]));
+  const favoriteIds = new Set(favoriteDocs.map((d) => d._id));
 
   const nowIso = new Date().toISOString();
   const pooled: PoolEntry[] = words.map((w) => {
@@ -110,9 +119,17 @@ export async function GET(req: NextRequest) {
         blank: w.blank,
         blankPost: w.blankPost,
         choices,
+        isFavorite: favoriteIds.has(w.id),
       };
     }
-    return { wordId: w.id, wordNo: w.wordNo, word: w.word, reading: w.reading, sentence: w.sentence };
+    return {
+      wordId: w.id,
+      wordNo: w.wordNo,
+      word: w.word,
+      reading: w.reading,
+      sentence: w.sentence,
+      isFavorite: favoriteIds.has(w.id),
+    };
   });
 
   return NextResponse.json({ mode, questions });

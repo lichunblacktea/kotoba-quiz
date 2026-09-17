@@ -19,6 +19,7 @@ interface GapQuestion {
   blank: string;
   blankPost: string;
   choices: string[];
+  isFavorite: boolean;
 }
 interface PronQuestion {
   wordId: number;
@@ -26,16 +27,19 @@ interface PronQuestion {
   word: string;
   reading: string;
   sentence: string;
+  isFavorite: boolean;
 }
 type Question = GapQuestion | PronQuestion;
 
 interface ResultRow {
+  wordId: number;
   wordNo: number;
   word: string;
   sentence: string;
   your: string;
   correct: string;
   ok: boolean;
+  isFavorite: boolean;
 }
 
 interface Stats {
@@ -378,7 +382,7 @@ function GapQuestionView({
     setAnswered(true);
     setSelected(val);
     setIsCorrect(ok);
-    onAnswered({ wordNo: q.wordNo, word: q.word, sentence: q.sentence, your: val, correct: q.reading, ok });
+    onAnswered({ wordId: q.wordId, wordNo: q.wordNo, word: q.word, sentence: q.sentence, your: val, correct: q.reading, ok, isFavorite: q.isFavorite });
     if (!(reveal && !ok)) setTimeout(onAdvance, 1000);
   }
 
@@ -483,7 +487,7 @@ function PronQuestionView({
     if (answered) return;
     endCycle();
     const ok = typed === expected;
-    onAnswered({ wordNo: q.wordNo, word: q.word, sentence: q.sentence, your: buildAttempt(segments, typed), correct: q.reading, ok });
+    onAnswered({ wordId: q.wordId, wordNo: q.wordNo, word: q.word, sentence: q.sentence, your: buildAttempt(segments, typed), correct: q.reading, ok, isFavorite: q.isFavorite });
     if (reveal) {
       setAnswered(true);
       setIsCorrect(ok);
@@ -754,7 +758,7 @@ function SummaryView({
         <div className="score">{score} / {total}</div>
       </div>
       <div className="board-head">
-        <span>#</span><span>No.</span><span>Word</span><span>Your answer</span><span>Correct</span><span></span><span></span>
+        <span>#</span><span>No.</span><span>Word</span><span>Your answer</span><span>Correct</span><span></span><span></span><span></span>
       </div>
       <div className="board">
         {results.map((r, i) => (
@@ -765,6 +769,7 @@ function SummaryView({
             <span className="board-your">{r.your || "—"}</span>
             <span className="board-correct">{r.correct}</span>
             <span className="board-mark">{r.ok ? "✓" : "✗"}</span>
+            <FavoriteButton wordId={r.wordId} initialFavorite={r.isFavorite} />
             <ReportButton wordNo={r.wordNo} word={r.word} sentence={r.sentence} />
           </div>
         ))}

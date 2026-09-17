@@ -436,7 +436,7 @@ h1{
 
 .board-head{
   display: grid;
-  grid-template-columns: 1.6em 3.2em 1fr 1fr 1fr 1.4em 1.6em;
+  grid-template-columns: 1.6em 3.2em 1fr 1fr 1fr 1.4em 1.6em 1.6em;
   gap: 8px;
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -457,7 +457,7 @@ h1{
 }
 .board-row{
   display: grid;
-  grid-template-columns: 1.6em 3.2em 1fr 1fr 1fr 1.4em 1.6em;
+  grid-template-columns: 1.6em 3.2em 1fr 1fr 1fr 1.4em 1.6em 1.6em;
   gap: 8px;
   align-items: center;
   font-size: 13.5px;
