@@ -93,6 +93,7 @@ h1{
   color: var(--ai);
   font-variant-numeric: tabular-nums;
 }
+.stat-value.accent{ color: var(--shu); }
 .stat-label{
   font-size: 11px;
   color: var(--ink-soft);
@@ -320,6 +321,7 @@ h1{
 }
 
 .empty-sub{ margin: 0 auto; text-align: center; }
+.mode-note{ margin: -4px 0 0; font-size: 13px; }
 
 .char-boxes{
   display: flex;
@@ -585,6 +587,11 @@ h1{
   flex-wrap: wrap;
 }
 .study-search{ flex: 1 1 220px; }
+.search-loading{
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
 .fav-toggle{
   display: flex;
   align-items: center;
@@ -607,6 +614,19 @@ h1{
   border-radius: 8px;
 }
 .study-row:nth-child(odd){ background: var(--paper); }
+/* Study-list icon buttons get a ~44px tap target (touch-target guideline) via a
+   scoped override — the same .fav-btn/.note-btn/.report-btn classes are also used
+   in the score board's tight fixed-width grid columns, which this leaves alone. */
+.study-row .fav-btn,
+.study-row .note-btn,
+.study-row .report-btn{
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.study-list.is-loading{ opacity: 0.55; }
 .study-sentence{
   font-family: "Shippori Mincho", serif;
   font-size: 14px;

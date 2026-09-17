@@ -134,6 +134,18 @@ export default function QuizApp() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
+  // Warn before an accidental close/reload/navigation drops the in-progress quiz —
+  // switching between this app's own tabs is unaffected since it never unmounts.
+  useEffect(() => {
+    if (quizStage !== "active") return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [quizStage]);
+
   async function startSession() {
     setActiveTab("quiz");
     setQuizStage("loading");
@@ -181,8 +193,8 @@ export default function QuizApp() {
       {stats && (
         <div className="stats-bar">
           <div className="stat"><span className="stat-value">{stats.total}</span><span className="stat-label">Words</span></div>
-          <div className="stat"><span className="stat-value">{stats.dueGap}</span><span className="stat-label">Gap due</span></div>
-          <div className="stat"><span className="stat-value">{stats.duePron}</span><span className="stat-label">Pron due</span></div>
+          <div className="stat"><span className={`stat-value ${stats.dueGap > 0 ? "accent" : ""}`}>{stats.dueGap}</span><span className="stat-label">Gap due</span></div>
+          <div className="stat"><span className={`stat-value ${stats.duePron > 0 ? "accent" : ""}`}>{stats.duePron}</span><span className="stat-label">Pron due</span></div>
         </div>
       )}
 
@@ -334,10 +346,20 @@ function SettingsView({
         <button type="button" className={`choice ${mode === "gap" ? "selected" : ""}`} onClick={() => setMode("gap")}>
           <span className="jp">穴埋め</span>Fill-in-gap
         </button>
-        <button type="button" className={`choice ${mode === "pron" ? "selected" : ""}`} onClick={() => setMode("pron")}>
+        <button
+          type="button"
+          className={`choice ${mode === "pron" ? "selected" : ""}`}
+          title="Type the kana spelling of the reading — a spelling/recall drill, not audio playback"
+          onClick={() => setMode("pron")}
+        >
           <span className="jp">発音</span>Pronunciation
         </button>
       </div>
+      {mode === "pron" && (
+        <p className="sub mode-note">
+          Note: this drills kana spelling — you type the reading, there&rsquo;s no audio.
+        </p>
+      )}
       <div className="prompt-label">How many questions?</div>
       <CountSlider count={count} setCount={setCount} />
       <div className="prompt-label">Minimum share of never-seen words</div>
@@ -375,6 +397,9 @@ function GapQuestionView({
   const [answered, setAnswered] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState(false);
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (advanceTimer.current) clearTimeout(advanceTimer.current); }, []);
 
   function pick(val: string) {
     if (answered) return;
@@ -383,7 +408,16 @@ function GapQuestionView({
     setSelected(val);
     setIsCorrect(ok);
     onAnswered({ wordId: q.wordId, wordNo: q.wordNo, word: q.word, sentence: q.sentence, your: val, correct: q.reading, ok, isFavorite: q.isFavorite });
-    if (!(reveal && !ok)) setTimeout(onAdvance, 1000);
+    // Auto-advance is a convenience, not a requirement: it fires either way so a
+    // fast learner isn't stuck waiting, but the Next button (shown below for both
+    // outcomes when reveal is on) lets anyone cancel it and linger on the answer.
+    if (!reveal) { setTimeout(onAdvance, 1000); return; }
+    advanceTimer.current = setTimeout(onAdvance, 1000);
+  }
+
+  function goNext() {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    onAdvance();
   }
 
   const blankText = !answered ? "＿＿＿＿" : reveal ? q.blank : "・・・・";
@@ -413,8 +447,8 @@ function GapQuestionView({
         })}
       </div>
       <div className="btn-row">
-        {answered && reveal && !isCorrect && (
-          <button type="button" className="btn primary" onClick={onAdvance}>Next</button>
+        {answered && reveal && (
+          <button type="button" className="btn primary" onClick={goNext}>Next</button>
         )}
       </div>
     </>
@@ -885,6 +919,7 @@ function StudyView() {
   const [hasNotesOnly, setHasNotesOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [data, setData] = useState<StudyData | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // debounce the search box so we don't fire a request per keystroke
   useEffect(() => {
@@ -899,7 +934,12 @@ function StudyView() {
     if (query) params.set("query", query);
     if (favoritesOnly) params.set("favoritesOnly", "1");
     if (hasNotesOnly) params.set("hasNotesOnly", "1");
-    fetch(`/api/words?${params}`).then((r) => r.json()).then(setData).catch(() => {});
+    setLoading(true);
+    fetch(`/api/words?${params}`)
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [query, favoritesOnly, hasNotesOnly, page]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
@@ -914,6 +954,7 @@ function StudyView() {
           value={queryInput}
           onChange={(e) => setQueryInput(e.target.value)}
         />
+        {loading && data && <span className="search-loading">Searching&hellip;</span>}
         <label className="fav-toggle">
           <input
             type="checkbox"
@@ -938,7 +979,7 @@ function StudyView() {
         <p className="sub empty-sub">No words match.</p>
       ) : (
         <>
-          <div className="study-list">
+          <div className={`study-list ${loading ? "is-loading" : ""}`}>
             {data.words.map((w) => (
               <div key={w.wordId} className="study-row">
                 <span className="board-i">{w.wordNo}</span>
